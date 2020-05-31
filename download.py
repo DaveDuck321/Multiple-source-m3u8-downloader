@@ -4,6 +4,11 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
 
+def print_progress_bar(fill):
+    fill_hashes = int(fill*20)
+    print("\rProgress: [{:10}] {: >3}% ".format('#'*fill_hashes, int(fill*100)), end='')
+
+
 def parse_m3_u8(data):
     # Returns an iterator of segment names as specified in the 'index.m3u8' file.
 
@@ -19,53 +24,51 @@ def parse_m3_u8(data):
     )
 
 
-def download_segment(file_index, url):
+def download_segment(url):
     # Makes a web request to download the video segment located at the url
-    print(url)
-    return (file_index, urllib.request.urlopen(url).read())
+    return urllib.request.urlopen(url).read()
 
 
-def download_panopto_streams(stream_addresses):
+def download_chunks_to(chunks, file_name, progress_bar=True):
+    # Downloads all segments in 'chunks'
+    # Concatenates results into a single file
+
+    print(f"Downloading to file '{file_name}'")
+    file = open(file_name, 'wb+')
+
+    # Download segments concurrently
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        # Split into 8 wide batches to reduce writing latency
+        segments = list(itertools.zip_longest(*(chunks,)*8))
+        for index, group in enumerate(segments):
+            if progress_bar:
+                print_progress_bar(index/len(segments))
+
+            segment_data = executor.map(download_segment, group)
+
+            for chunk in segment_data:
+                file.write(chunk)
+
+    if progress_bar:
+        print_progress_bar(1.0)
+        print("\nSuccess!")
+
+
+def download_panopto_stream(stream_url):
     # Download the 'index.m3u8' files to identify stream lengths and segment names
     # This is done synchronously
-    segments_to_stream = iter([])
-    for file_index, stream_url in enumerate(stream_addresses):
-        index_content = urllib.request.urlopen(stream_url + 'index.m3u8')
+    index_content = urllib.request.urlopen(stream_url + 'index.m3u8')
 
-        # Adds all segments to the download queue
-        segments_to_stream = itertools.chain(
-            segments_to_stream,
-            map(  # Convert to absolute urls with identification index
-                lambda seg_name: (file_index, stream_url + seg_name),
-                parse_m3_u8(index_content)
-            )
-        )
+    # Adds all segments to the download queue
+    # Progress bar requires knowledge of stream length, use list
+    segments_to_stream = list(map(  # Convert to absolute urls
+        lambda seg_name: stream_url + seg_name,
+        parse_m3_u8(index_content)
+    ))
 
-    # Concurrently downloads all video segments in stream
-    with ThreadPoolExecutor(max_workers=8) as executor:
-        current_index = -1
-        seg_promises = [1]
-        while len(seg_promises) != 0:
-            # Starts all downloads at once, the ThreadPool will rate limit
-            seg_promises = []
-            for file_index, url in itertools.islice(segments_to_stream, 0, 8):
-                seg_promises.append(executor.submit(download_segment, file_index, url))
-
-
-            # Save these promises to the correct video files
-            for segment_index, segment in enumerate(seg_promises):
-                print(f"Downloading file {current_index} segment {segment_index}")
-
-                # Ensures the file is fully downloaded
-                (file_index, seg_data) = segment.result()
-
-                # Stream to the correct file
-                if file_index != current_index:
-                    current_file = open(f'{file_index}.ts', 'wb+')
-                    current_index = file_index
-
-                current_file.write(seg_data)
+    # Downloads the actual video to disk, concatinating to
+    download_chunks_to(segments_to_stream, '0.ts')
 
 
 if __name__ == "__main__":
-    download_panopto_streams([""])
+    download_panopto_stream("")
