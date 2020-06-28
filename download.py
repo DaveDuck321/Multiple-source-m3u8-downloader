@@ -97,7 +97,7 @@ def download_panopto_streams(streams, out_folder):
 
 
 if __name__ == "__main__":
-    input("Output, folder")
+    input("Output folder: ")
     print("Please paste all stream URLs to download:")
     streams = []
     while stream := input("> "):
