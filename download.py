@@ -62,7 +62,7 @@ def download_chunks_to(names, chunks, folder, progress_bar=True):
         print("\nSuccess!")
 
 
-def download_panopto_stream_source(stream_url, out_folder):
+def download_M3U_stream(stream_url, out_folder):
     # Download the 'index.m3u8' files to identify stream lengths and segment names
     # This is done synchronously
     Path(out_folder).mkdir()
@@ -86,21 +86,21 @@ def download_panopto_stream_source(stream_url, out_folder):
     download_chunks_to(segment_names, segments_to_stream, out_folder)
 
 
-def download_panopto_streams(streams, out_folder):
+def download_M3U_streams(streams, out_folder):
     # Downloads a complete multipart stream including all sources
     # The complete url of all streams are required
     Path(out_folder).mkdir(parents=True, exist_ok=False)
 
     for index, stream_url in enumerate(streams):
         print(f"\nDownloading stream {index}")
-        download_panopto_stream_source(stream_url, f"{out_folder}/{index}/")
+        download_M3U_stream(stream_url, f"{out_folder}/{index}/")
 
 
 if __name__ == "__main__":
-    input("Output folder: ")
+    out_folder = input("Output folder: ")
     print("Please paste all stream URLs to download:")
     streams = []
     while stream := input("> "):
         streams.append(stream)
 
-    download_panopto_streams(streams, "out1")
+    download_M3U_streams(streams, out_folder)
