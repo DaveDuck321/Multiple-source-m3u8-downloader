@@ -24,51 +24,56 @@ def parse_m3_u8(data):
     )
 
 
-def download_segment(url):
+def download_segment(data):
     # Makes a web request to download the video segment located at the url
-    return urllib.request.urlopen(url).read()
+    return (data[0], urllib.request.urlopen(data[1]).read())
 
 
-def download_chunks_to(chunks, file_name, progress_bar=True):
+def download_chunks_to(names, chunks, folder, progress_bar=True):
     # Downloads all segments in 'chunks'
     # Concatenates results into a single file
 
-    print(f"Downloading to file '{file_name}'")
-    file = open(file_name, 'wb+')
+    print(f"Downloading to folder '{folder}'")
 
     # Download segments concurrently
     with ThreadPoolExecutor(max_workers=8) as executor:
         # Split into 8 wide batches to reduce writing latency
-        segments = list(itertools.zip_longest(*(chunks,)*8))
+        named_chunks = zip(names, chunks)
+        segments = list(itertools.zip_longest(*(named_chunks,)*8))
+
         for index, group in enumerate(segments):
             if progress_bar:
                 print_progress_bar(index/len(segments))
 
             segment_data = executor.map(download_segment, group)
 
-            for chunk in segment_data:
-                file.write(chunk)
+            for name, chunk in segment_data:
+                with open(folder+name, 'wb+') as file:
+                    file.write(chunk)
 
     if progress_bar:
         print_progress_bar(1.0)
         print("\nSuccess!")
 
 
-def download_panopto_stream(stream_url):
+def download_panopto_stream(stream_url, out_folder):
     # Download the 'index.m3u8' files to identify stream lengths and segment names
     # This is done synchronously
     index_content = urllib.request.urlopen(stream_url + 'index.m3u8')
+    with open(out_folder + 'index.m3u8', 'w+') as file:
+        file.write(index_content)
 
     # Adds all segments to the download queue
     # Progress bar requires knowledge of stream length, use list
+    segment_names = list(parse_m3_u8(index_content))
     segments_to_stream = list(map(  # Convert to absolute urls
         lambda seg_name: stream_url + seg_name,
-        parse_m3_u8(index_content)
+        segment_names
     ))
 
     # Downloads the actual video to disk, concatinating to
-    download_chunks_to(segments_to_stream, '0.ts')
+    download_chunks_to(segment_names, segments_to_stream, 'out/')
 
 
 if __name__ == "__main__":
-    download_panopto_stream("")
+    download_panopto_stream("", "out")
