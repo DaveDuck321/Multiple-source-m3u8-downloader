@@ -25,10 +25,11 @@ def parse_m3_u8(data):
 
 
 def download_segment(data):
-    # Makes a web request to download the video segment located at the url
+    # Don't attempt obviously invalid web requests
     if data is None:
         return (None, None)
 
+    # Makes a web request to download the video segment located at the url
     return (data[0], urllib.request.urlopen(data[1]).read())
 
 
@@ -51,6 +52,7 @@ def download_chunks_to(names, chunks, folder, progress_bar=True):
             segment_data = executor.map(download_segment, group)
 
             for name, chunk in segment_data:
+                # None values are inserted to match worker_count
                 if name == None:
                     continue
 
@@ -71,16 +73,15 @@ def download_M3U_stream(stream_url, out_folder):
     index_content = index_content.readlines()
 
     with open(out_folder + 'index.m3u8', 'wb+') as file:
-        for line in index_content:
-            file.write(line)
+        file.writelines(index_content)
 
     # Adds all segments to the download queue
     # Progress bar requires knowledge of stream length, use list
     segment_names = list(parse_m3_u8(index_content))
-    segments_to_stream = list(map(  # Convert to absolute urls
+    segments_to_stream = map(  # Convert to absolute urls
         lambda seg_name: stream_url + seg_name,
         segment_names
-    ))
+    )
 
     # Downloads the actual video to disk, concatinating to
     download_chunks_to(segment_names, segments_to_stream, out_folder)
@@ -98,6 +99,7 @@ def download_M3U_streams(streams, out_folder):
 
 if __name__ == "__main__":
     out_folder = input("Output folder: ")
+
     print("Please paste all stream URLs to download:")
     streams = []
     while stream := input("> "):
