@@ -1,5 +1,6 @@
-import subprocess
 import re
+import subprocess
+from argparse import ArgumentParser
 from pathlib import Path
 
 
@@ -36,4 +37,15 @@ def merge_multipart(in_path: Path, out_path: Path):
 
 
 if __name__ == "__main__":
-    merge_multipart(Path(input("path> ")), Path('out'))
+    parser = ArgumentParser(
+        description="Merges a stream of *.ts video segments")
+    parser.add_argument(
+        '-o', dest='output', default="./out/",
+        help='The destination directory for the merged video')
+    parser.add_argument(
+        'input',
+        help="The directory containing multiple *.ts video streams")
+
+    arguments = parser.parse_args()
+
+    merge_multipart(Path(arguments.input), Path(arguments.output))
