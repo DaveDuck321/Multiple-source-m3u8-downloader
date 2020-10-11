@@ -1,3 +1,6 @@
 out/
 *.ts
 *.m3u8
+*.exe
+*.txt
+*.mp4
