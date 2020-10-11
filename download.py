@@ -1,6 +1,7 @@
 import itertools
-import json
 
+import sys
+import json
 from pathlib import Path
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -8,18 +9,23 @@ from concurrent.futures import ThreadPoolExecutor
 
 def print_progress_bar(fill):
     fill_hashes = int(fill*20)
-    print("\rProgress: [{:20}] {: >3}% ".format('#'*fill_hashes, int(fill*100)), end='')
+    print("\rProgress: [{:20}] {: >3}% ".format(
+        '#'*fill_hashes, int(fill*100)), end='')
 
 
 def parse_m3_u8(data):
-    # Returns an iterator of segment names as specified in the 'index.m3u8' file.
-    return map(
-        # Converts bytes into string without newline padding
-        lambda line_data: line_data.decode("utf-8").rstrip(),
+    # Returns an iterator of segment names as specified in 'index.m3u8'
+
+    # Converts bytes into string without newline padding
+    # Comments always appear at the start of a line, ignore these lines
+    return (
         filter(
-            # Comments always appear at the start of a line, ignore these lines
-            lambda line: chr(line[0]) != '#',
-            data
+            lambda text: ".ts" in text,
+            (
+                line.decode("utf-8").rstrip()
+                for line in data
+                if chr(line[0]) != '#'
+            )
         )
     )
 
@@ -33,7 +39,7 @@ def download_segment(data):
     return (data[0], urllib.request.urlopen(data[1]).read())
 
 
-def download_chunks_to(names, chunks, folder, progress_bar=True):
+def download_chunks_to(names, chunks, folder: Path, progress_bar=True):
     # Downloads all segments in 'chunks'
     # Concatenates results into a single file
 
@@ -53,33 +59,41 @@ def download_chunks_to(names, chunks, folder, progress_bar=True):
 
             for name, chunk in segment_data:
                 # None values are inserted to match worker_count
-                if name == None:
+                if name is None:
                     continue
 
-                with open(folder + name, 'wb+') as file:
-                    file.write(chunk)
+                out_file = folder / name
+                out_file.write_bytes(chunk)
 
     if progress_bar:
         print_progress_bar(1.0)
         print("\nSuccess!")
 
 
-def download_M3U_stream(stream_url, out_folder):
-    # Download the 'index.m3u8' files to identify stream lengths and segment names
+def download_M3U_stream(stream_url, out_folder: Path):
+    # Download 'index.m3u8' to identify stream lengths and segment names
     # This is done synchronously
-    Path(out_folder).mkdir()
 
-    index_content = urllib.request.urlopen(stream_url + 'index.m3u8')
+    print(f"Downloading {stream_url}")
+
+    # Generate output folder
+    out_folder.mkdir(parents=True, exist_ok=False)
+
+    # Discover segment names
+    index_content = urllib.request.urlopen(stream_url)
     index_content = index_content.readlines()
 
-    with open(out_folder + 'index.m3u8', 'wb+') as file:
+    with open(out_folder / 'index.m3u8', 'wb+') as file:
         file.writelines(index_content)
+
+    # Parent folder for relative path navigation
+    stream_base_url = stream_url.split('index.m3u8')[0]
 
     # Adds all segments to the download queue
     # Progress bar requires knowledge of stream length, use list
     segment_names = list(parse_m3_u8(index_content))
     segments_to_stream = map(  # Convert to absolute urls
-        lambda seg_name: stream_url + seg_name,
+        lambda seg_name: stream_base_url + seg_name,
         segment_names
     )
 
@@ -87,22 +101,57 @@ def download_M3U_stream(stream_url, out_folder):
     download_chunks_to(segment_names, segments_to_stream, out_folder)
 
 
-def download_M3U_streams(streams, out_folder):
+def download_M3U_streams(streams, out_folder: Path):
     # Downloads a complete multipart stream including all sources
     # The complete url of all streams are required
-    Path(out_folder).mkdir(parents=True, exist_ok=False)
-
     for index, stream_url in enumerate(streams):
         print(f"\nDownloading stream {index}")
-        download_M3U_stream(stream_url, f"{out_folder}/{index}/")
+        download_M3U_stream(stream_url, out_folder / str(index))
+
+
+def index_url_from_master(master_url: str, out_folder: Path):
+    # Download the 'master.m3u8' file returning the download
+    # address of the highest resolution index file.
+    master_content = urllib.request.urlopen(master_url)
+    master_content = master_content.readlines()
+
+    # Log full contents to file for debugging
+    master_file = (out_folder / 'masters.txt').open('ab+')
+    master_file.write(b'<------- START OF MASTER ------->\n')
+    master_file.writelines(master_content)
+    master_file.write(b'<-------- END OF MASTER -------->\n')
+    master_file.close()
+
+    base_url = master_url.split('master.m3u8')[0]
+
+    for line in master_content:
+        # Ignore comments
+        if chr(line[0]) == '#':
+            continue
+        return base_url + line[:-1].decode("utf-8")
+
+    raise IOError("Bad master.m3u8 received")
+
+
+def parse_DeliveryInfo(delivery_info, out_folder: Path):
+    # Generate output location
+    out_folder.mkdir(parents=True, exist_ok=False)
+
+    # Get all stream obbjects
+    json_info = json.loads(delivery_info)
+    streams = json_info["Delivery"]["Streams"]
+
+    print("Finding streams")
+    masters = (stream["StreamUrl"] for stream in streams)
+    index_urls = list(index_url_from_master(master, out_folder)
+                      for master in masters)
+
+    print(f"Downloading {len(index_urls)} streams")
+    download_M3U_streams(index_urls, out_folder)
 
 
 if __name__ == "__main__":
-    out_folder = input("Output folder: ")
+    out_folder = sys.argv[1]
 
-    print("Please paste all stream URLs to download:")
-    streams = []
-    while stream := input("> "):
-        streams.append(stream)
-
-    download_M3U_streams(streams, out_folder)
+    print("Please paste delivery info")
+    parse_DeliveryInfo(input("> "), Path(out_folder))
