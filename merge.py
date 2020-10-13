@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 
-def merge_stream(in_path: Path, out_path: Path):
+def merge_stream(in_path: Path, out_file: Path):
     # Generate a list of stream parts
     index_path = in_path / 'index.m3u8'
     merge_path = in_path / 'files.txt'
@@ -22,18 +22,22 @@ def merge_stream(in_path: Path, out_path: Path):
         '-f', 'concat',
         '-i', merge_path,
         '-c', 'copy',
-        out_path / 'out.ts',
+        out_file,
     ])
 
 
 def merge_multipart(in_path: Path, out_path: Path):
-    for part in in_path.glob('*/'):
-        # Ensure output folder exists
-        our_dir = out_path / part.name
-        our_dir.mkdir(parents=True, exist_ok=True)
+    # Ensure directory exists
+    out_path.mkdir(exist_ok=False, parents=True)
+
+    for part in in_path.glob('*'):
+        # Skip individual files, only attempt merge on directories
+        if not part.is_dir():
+            continue
 
         # Merge files
-        merge_stream(part, our_dir)
+        out_file = out_path / (part.name + '.ts')
+        merge_stream(part, out_file)
 
 
 if __name__ == "__main__":
