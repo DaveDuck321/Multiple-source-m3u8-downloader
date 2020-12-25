@@ -2,6 +2,7 @@ import itertools
 
 import sys
 import json
+from argparse import ArgumentParser
 from pathlib import Path
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -151,7 +152,18 @@ def parse_DeliveryInfo(delivery_info, out_folder: Path):
 
 
 if __name__ == "__main__":
-    out_folder = sys.argv[1]
+    parser = ArgumentParser(
+        description="Downloads a multipart .m3u8 stream")
+    parser.add_argument(
+        'file_in',
+        help="The file containing the DeliveryInfo object")
+    parser.add_argument(
+        'dir_out',
+        help='The destination directory for the downloaded video stream')
 
-    print("Please paste delivery info")
-    parse_DeliveryInfo(input("> "), Path(out_folder))
+    arguments = parser.parse_args()
+
+    in_file = Path(arguments.file_in)
+    out_folder = Path(arguments.dir_out)
+
+    parse_DeliveryInfo(in_file.read_text(), out_folder)
