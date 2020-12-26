@@ -15,10 +15,10 @@ def print_progress_bar(fill):
 
 
 def parse_m3_u8(data):
-    # Returns an iterator of segment names as specified in 'index.m3u8'
+    """ Returns an iterator of the segment names enumerated in 'index.m3u8' """
 
-    # Converts bytes into string without newline padding
-    # Comments always appear at the start of a line, ignore these lines
+    # Convert file bytes into a string without newline padding
+    # Ignore the comments (marked by a '#' at the start of a line)
     return (
         filter(
             lambda text: ".ts" in text,
@@ -41,8 +41,17 @@ def download_segment(data):
 
 
 def download_chunks_to(names, chunks, folder: Path, progress_bar=True):
-    # Downloads all segments in 'chunks'
-    # Concatenates results into a single file
+    """
+        Downloads all video segments specified in the 'chunks' list.
+
+        Concurrent chunks are downloaded in parallel on multiple
+        threads, starting at the first N chunks. This allows video
+        playback before the whole stream has been downloaded.
+
+        Video chunks are saved into 'folder' without any additional
+        processing. As a result, 'folder' should be chosen such that
+        the downloaded chunk names do not conflict with existing files.
+    """
 
     print(f"Downloading to folder '{folder}'")
 
@@ -60,6 +69,7 @@ def download_chunks_to(names, chunks, folder: Path, progress_bar=True):
 
             for name, chunk in segment_data:
                 # None values are inserted to match worker_count
+                # These are stripped in download_segment() itself
                 if name is None:
                     continue
 
@@ -72,8 +82,13 @@ def download_chunks_to(names, chunks, folder: Path, progress_bar=True):
 
 
 def download_M3U_stream(stream_url, out_folder: Path):
-    # Download 'index.m3u8' to identify stream lengths and segment names
-    # This is done synchronously
+    """
+        Download 'index.m3u8' to identify all stream lengths and
+        segment names. The original 'index.m3u8" is also saved to
+        'out_folder' to allow video playback.
+
+        This is done synchronously.
+    """
 
     print(f"Downloading {stream_url}")
 
@@ -91,28 +106,34 @@ def download_M3U_stream(stream_url, out_folder: Path):
     stream_base_url = stream_url.split('index.m3u8')[0]
 
     # Adds all segments to the download queue
-    # Progress bar requires knowledge of stream length, use list
+    # list: Progress bar requires knowledge of stream length
     segment_names = list(parse_m3_u8(index_content))
     segments_to_stream = map(  # Convert to absolute urls
         lambda seg_name: stream_base_url + seg_name,
         segment_names
     )
 
-    # Downloads the actual video to disk, concatinating to
+    # Downloads the actual video chunks to disk
     download_chunks_to(segment_names, segments_to_stream, out_folder)
 
 
 def download_M3U_streams(streams, out_folder: Path):
-    # Downloads a complete multipart stream including all sources
-    # The complete url of all streams are required
+    """
+        Download a complete multipart stream including all sources.
+        The complete base url of all streams are required.
+    """
     for index, stream_url in enumerate(streams):
         print(f"\nDownloading stream {index}")
         download_M3U_stream(stream_url, out_folder / str(index))
 
 
 def index_url_from_master(master_url: str, out_folder: Path):
-    # Download the 'master.m3u8' file returning the download
-    # address of the highest resolution index file.
+    """
+        Download the 'master.m3u8' file in order to find the url
+        of the highest resolution index.m3u8 file available.
+
+        Return the URL of this index file.
+    """
     master_content = urllib.request.urlopen(master_url)
     master_content = master_content.readlines()
 
@@ -138,7 +159,7 @@ def parse_DeliveryInfo(delivery_info, out_folder: Path):
     # Generate output location
     out_folder.mkdir(parents=True, exist_ok=False)
 
-    # Get all stream obbjects
+    # Get all stream objects
     json_info = json.loads(delivery_info)
     streams = json_info["Delivery"]["Streams"]
 
