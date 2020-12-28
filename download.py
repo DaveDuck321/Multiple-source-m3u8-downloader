@@ -41,13 +41,13 @@ def download_segment(data):
 
 def download_chunks_to(names, chunks, folder: Path, progress_bar=True):
     """
-        Downloads all video segments specified in the 'chunks' list.
+        Downloads all data segments specified in the 'chunks' list.
 
         Concurrent chunks are downloaded in parallel on multiple
         threads, starting at the first N chunks. This allows video
         playback before the whole stream has been downloaded.
 
-        Video chunks are saved into 'folder' without any additional
+        Data chunks are saved into 'folder' without any additional
         processing. As a result, 'folder' should be chosen such that
         the downloaded chunk names do not conflict with existing files.
     """
@@ -154,6 +154,48 @@ def index_url_from_master(master_url: str, out_folder: Path):
     raise IOError("Bad master.m3u8 received")
 
 
+def download_attached_objects(stream_url: str, timestamps, root_folder: Path):
+    """
+        Download all objects attached to the stream as specified in the
+        DeliveryInfo Timesteps array.
+
+        No attempt is made to save the attached text or timestamp, this is
+        already saved in DeliveryInfo.json.
+
+        'stream_url' is the url of any video stream assosiated with the
+        'timestamps' objects, it is possible that the choice of url will
+        determine the success of this download, however, this has not been
+        observed in testing.
+    """
+
+    # Get the stream domain and port
+    data_domain = '/'.join(stream_url.split('/')[:3])
+
+    download_queue = []
+    for timestamp in timestamps:
+        target_type = timestamp["EventTargetType"]
+
+        if(target_type == "PowerPoint"):
+            public_id = timestamp['ObjectPublicIdentifier']
+            file_name = f"slide{timestamp['ObjectSequenceNumber']}.jpg"
+            session_url = f"{data_domain}/sessions/{timestamp['SessionID']}"
+            request_url = f"{session_url}/{public_id}_et/images/{file_name}"
+
+            download_queue.append((file_name, request_url))
+        else:
+            print(f"[WARNING] Data Target '{target_type}' not implemented!")
+
+    # Don't do anything if no data has been queued
+    if len(timestamps) == 0:
+        print("No attached objects found!")
+        return
+
+    # Download all data and save it to a new data folder
+    out_folder = root_folder / 'data'
+    out_folder.mkdir(parents=True, exist_ok=False)
+    download_chunks_to(*zip(*download_queue), out_folder)
+
+
 def parse_DeliveryInfo(delivery_info, out_folder: Path):
     # Generate output location
     out_folder.mkdir(parents=True, exist_ok=False)
@@ -165,14 +207,15 @@ def parse_DeliveryInfo(delivery_info, out_folder: Path):
     with open(out_folder / 'DeliveryInfo.json', 'w+') as info_file:
         json.dump(json_info, info_file)
 
-    streams = json_info["Streams"]
-
     print("Finding streams")
-    masters = (stream["StreamUrl"] for stream in streams)
+    masters = list(stream["StreamUrl"] for stream in json_info["Streams"])
     index_urls = list(index_url_from_master(master, out_folder)
                       for master in masters)
 
-    print(f"Downloading {len(index_urls)} streams")
+    print("\nDownloading attached objects")
+    download_attached_objects(masters[0], json_info["Timestamps"], out_folder)
+
+    print(f"\nDownloading {len(index_urls)} streams")
     download_M3U_streams(index_urls, out_folder)
 
 
