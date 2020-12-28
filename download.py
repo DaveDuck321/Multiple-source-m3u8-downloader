@@ -1,6 +1,5 @@
 import itertools
 
-import sys
 import json
 from argparse import ArgumentParser
 from pathlib import Path
@@ -159,9 +158,14 @@ def parse_DeliveryInfo(delivery_info, out_folder: Path):
     # Generate output location
     out_folder.mkdir(parents=True, exist_ok=False)
 
-    # Get all stream objects
-    json_info = json.loads(delivery_info)
-    streams = json_info["Delivery"]["Streams"]
+    # Get all relevant info
+    json_info = json.loads(delivery_info)["Delivery"]
+
+    # Save all relevant delivery info to allow synchronisation later
+    with open(out_folder / 'DeliveryInfo.json', 'w+') as info_file:
+        json.dump(json_info, info_file)
+
+    streams = json_info["Streams"]
 
     print("Finding streams")
     masters = (stream["StreamUrl"] for stream in streams)
