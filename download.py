@@ -162,7 +162,7 @@ def download_attached_objects(stream_url: str, timestamps, root_folder: Path):
         No attempt is made to save the attached text or timestamp, this is
         already saved in DeliveryInfo.json.
 
-        'stream_url' is the url of any video stream assosiated with the
+        'stream_url' is the url of any video stream associated with the
         'timestamps' objects, it is possible that the choice of url will
         determine the success of this download, however, this has not been
         observed in testing.
@@ -186,7 +186,7 @@ def download_attached_objects(stream_url: str, timestamps, root_folder: Path):
             print(f"[WARNING] Data Target '{target_type}' not implemented!")
 
     # Don't do anything if no data has been queued
-    if len(timestamps) == 0:
+    if len(download_queue) == 0:
         print("No attached objects found!")
         return
 
