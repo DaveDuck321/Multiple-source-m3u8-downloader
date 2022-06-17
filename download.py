@@ -13,7 +13,7 @@ def print_progress_bar(fill):
         '#'*fill_hashes, int(fill*100)), end='')
 
 
-def parse_m3_u8(data):
+def parse_segments_from_m3u8(data):
     """ Returns an iterator of the segment names enumerated in 'index.m3u8' """
 
     # Convert file bytes into a string without newline padding
@@ -27,6 +27,20 @@ def parse_m3_u8(data):
                 if chr(line[0]) != '#'
             )
         )
+    )
+
+
+def parse_streams_from_m3u8(data):
+    """ Returns an iterator of the streams in 'index.m3u8' """
+    return (
+        set(filter(
+            lambda text: ".mp4" in text,
+            (
+                line.decode("utf-8").rstrip()
+                for line in data
+                if chr(line[0]) != '#'
+            )
+        ))
     )
 
 
@@ -106,7 +120,7 @@ def download_M3U_stream(stream_url, out_folder: Path):
 
     # Adds all segments to the download queue
     # list: Progress bar requires knowledge of stream length
-    segment_names = list(parse_m3_u8(index_content))
+    segment_names = list(parse_segments_from_m3u8(index_content))
     segments_to_stream = map(  # Convert to absolute urls
         lambda seg_name: stream_base_url + seg_name,
         segment_names
@@ -114,6 +128,14 @@ def download_M3U_stream(stream_url, out_folder: Path):
 
     # Downloads the actual video chunks to disk
     download_chunks_to(segment_names, segments_to_stream, out_folder)
+
+    # Download any remaining mp4 streams
+    stream_names = list(parse_streams_from_m3u8(index_content))
+    streams_to_download = map(  # Convert to absolute urls
+        lambda stream_name: stream_base_url + stream_name,
+        stream_names
+    )
+    download_chunks_to(stream_names, streams_to_download, out_folder)
 
 
 def download_M3U_streams(streams, out_folder: Path):
